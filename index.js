@@ -827,6 +827,11 @@ async function startCheckingForBlocks(startBlockNumber) {
             console.error("Failed to get ETH block #" + i + ":", error);
             return setTimeout(resetCheckingForBlocks, 15 * 60000);
         }
+        
+        if (block === null) {
+            console.error("Failed to get ETH block #" + i);
+            return setTimeout(resetCheckingForBlocks, 15 * 60000);
+        }
 
         try {
             var fundBalance = await (i >= 10909111 ? contractsWithArchive["stable"].RariFundManager : (i >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(i > 10458016 && i < 10458038 ? 10458016 : i);

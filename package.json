@@ -1,0 +1,31 @@
+{
+  "name": "rari-api",
+  "version": "1.0.0",
+  "description": "Web API for Rari Capital.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rari-Capital/rari-api.git"
+  },
+  "author": {
+    "name": "David Lucid",
+    "email": "david@rari.capital",
+    "url": "https://github.com/davidlucid"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/Rari-Capital/rari-api/issues"
+  },
+  "homepage": "https://github.com/Rari-Capital/rari-api#readme",
+  "dependencies": {
+    "axios": "^0.20.0",
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "express-async-handler": "^1.1.4",
+    "mongodb": "^3.6.2",
+    "web3": "^1.2.10"
+  }
+}

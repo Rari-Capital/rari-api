@@ -8,6 +8,7 @@ const web3WithLogs = new Web3(new Web3.providers.HttpProvider(process.env.WEB3_H
 const web3WithArchive = new Web3(new Web3.providers.HttpProvider(process.env.WEB3_HTTP_PROVIDER_ARCHIVE_URL));
 const axios = require("axios");
 const app = express();
+const Big = require('big.js');
 
 app.use(cors({ origin: process.env.ACCESS_CONTROL_ALLOW_ORIGIN }));
 app.use(express.json());
@@ -71,7 +72,7 @@ var ethUsdPrice = getEthPrice();
 
 async function getEthPrice() {
     try {
-        return Web3.utils.toBN((await axios.get("https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=ethereum")).data.ethereum.usd * 1e18);
+        return Web3.utils.toBN((new Big((await axios.get("https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=ethereum")).data.ethereum.usd)).mul(1e18).toFixed(0));
     } catch (error) {
         throw "Error retrieving data from Coingecko API: " + error;
     } 

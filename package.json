@@ -22,6 +22,7 @@
   "homepage": "https://github.com/Rari-Capital/rari-api#readme",
   "dependencies": {
     "axios": "^0.20.0",
+    "big.js": "^6.0.3",
     "cors": "^2.8.5",
     "express": "^4.17.1",
     "express-async-handler": "^1.1.4",

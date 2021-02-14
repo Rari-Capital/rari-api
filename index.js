@@ -613,7 +613,8 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
         if (!exchangeRate) {
             try {
                 if (poolKey == "stable") var fundBalanceBN = Web3.utils.toBN(await (event.blockNumber >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (event.blockNumber >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(event.blockNumber > 10458016 && event.blockNumber < 10458038 ? 10458016 : event.blockNumber));
-                else var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(poolKey === "ethereum" && event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : event.blockNumber));
+                else if (poolKey == "yield") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11854020 && event.blockNumber < 11854028 ? 11854020 : event.blockNumber));
+                else if (poolKey == "ethereum") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : event.blockNumber));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + event.blockNumber + ":", error);
                 return res.status(500).send();
@@ -858,7 +859,8 @@ async function startCheckingForBlocks(startBlockNumber) {
             var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
 
             try {
-                var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(poolKey === "ethereum" && i > 11819249 && i < 11819256 ? 11819249 : i);
+                if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : i);
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);
@@ -942,7 +944,8 @@ async function checkForMissingBlocks(startBlockNumber) {
             var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
 
             try {
-                var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(poolKey === "ethereum" && i > 11819249 && i < 11819256 ? 11819249 : i);
+                if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : i);
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);

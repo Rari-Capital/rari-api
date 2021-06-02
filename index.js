@@ -10,13 +10,25 @@ const axios = require("axios");
 const app = express();
 const Big = require('big.js');
 
+const POOL_KEYS = ["stable", "yield", "ethereum", "dai"];
+const POOL_TOKEN_KEYS = { "stable": "rspt", "yield": "rypt", "ethereum": "rept", "dai": "rdpt" };
+const POOL_INCEPTION_BLOCKS = {
+    "stable": 10365607, // First deposit ever
+    "yield": 11095700, // 11095700 is close enough
+    "ethereum": 11095700, // 11095700 is close enough
+    "dai": 11441321 // Block original RariFundController was deployed at
+};
+const POOL_INCEPTION_TIMESTAMPS = { // Currently only used for Stable Pool
+    "stable": 1593499687, // First deposit ever
+};
+
 app.use(cors({ origin: process.env.ACCESS_CONTROL_ALLOW_ORIGIN }));
 app.use(express.json());
 
 function calculateApyBN(startTimestamp, startRsptExchangeRate, endTimestamp, endRsptExchangeRate) {
     const SECONDS_PER_YEAR = 365 * 86400;
     var timeDiff = endTimestamp - startTimestamp;
-    return Web3.utils.toBN(Math.trunc((((endRsptExchangeRate.toString() / startRsptExchangeRate.toString()) ** (SECONDS_PER_YEAR / timeDiff)) - 1) * 1e18));
+    return Web3.utils.toBN((new Big((((endRsptExchangeRate.toString() / startRsptExchangeRate.toString()) ** (SECONDS_PER_YEAR / timeDiff)) - 1) * 1e18)).toFixed(0));
 }
 
 function getRgtDistributed(blockNumber) {
@@ -129,7 +141,8 @@ app.get("/tvl", asyncHandler(async (req, res, next) => {
 
     var ethereumPoolBalanceUsdBN = closestBlock.ethereumPoolBalance !== undefined ? Web3.utils.toBN(closestBlock.ethereumPoolBalance).mul(await getEthPrice()).div(Web3.utils.toBN(1e18)) : Web3.utils.toBN(0);
     var yieldPoolBalanceBN = closestBlock.yieldPoolBalance !== undefined ? Web3.utils.toBN(closestBlock.yieldPoolBalance) : Web3.utils.toBN(0);
-    var fundBalanceSum = Web3.utils.toBN(closestBlock.stablePoolBalance).add(yieldPoolBalanceBN).add(ethereumPoolBalanceUsdBN);
+    var daiPoolBalanceBN = closestBlock.daiPoolBalance !== undefined ? Web3.utils.toBN(closestBlock.daiPoolBalance) : Web3.utils.toBN(0);
+    var fundBalanceSum = Web3.utils.toBN(closestBlock.stablePoolBalance).add(yieldPoolBalanceBN).add(ethereumPoolBalanceUsdBN).add(daiPoolBalanceBN);
     return res.status(200).json(fundBalanceSum.toString());
 }));
 
@@ -215,12 +228,12 @@ app.get("/tvl", asyncHandler(async (req, res, next) => {
 })); */
 
 app.get("/pools/:pool/apy", asyncHandler(async (req, res, next) => {
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
-    var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+    var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
 
     var toTimestamp = req.query && req.query.toTimestamp !== undefined ? Math.min(req.query.toTimestamp, Math.trunc((new Date()).getTime() / 1000)) : Math.trunc((new Date()).getTime() / 1000);
-    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, 1593499687) : toTimestamp - 86400;
+    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, POOL_INCEPTION_TIMESTAMPS.stable) : toTimestamp - 86400;
 
     var returnFields = { timestamp: 1 };
     returnFields[poolTokenKey + "ExchangeRate"] = 1;
@@ -229,7 +242,7 @@ app.get("/pools/:pool/apy", asyncHandler(async (req, res, next) => {
         var closestAbove = await db.collection('blocks').find({ timestamp: { $gte: fromTimestamp } }, returnFields).sort({ timestamp: 1 }).limit(1).toArray();
         var closestBelow = await db.collection('blocks').find({ timestamp: { $lte: fromTimestamp } }, returnFields).sort({ timestamp: -1 }).limit(1).toArray();
         var closestBlock = closestAbove[0] && (!closestBelow[0] || closestAbove[0].timestamp - fromTimestamp <= fromTimestamp - closestBelow[0].timestamp) ? closestAbove[0] : closestBelow[0];
-        var fromExchangeRate = Web3.utils.toBN(closestBlock[poolTokenKey + "ExchangeRate"]);
+        var fromExchangeRate = Web3.utils.toBN(closestBlock[poolTokenKey + "ExchangeRate"] ? closestBlock[poolTokenKey + "ExchangeRate"] : 1e18);
     } catch (error) {
         console.error("Failed to get RSPT rates history:", error);
         return res.status(500).send();
@@ -239,7 +252,7 @@ app.get("/pools/:pool/apy", asyncHandler(async (req, res, next) => {
         var closestAbove = await db.collection('blocks').find({ timestamp: { $gte: toTimestamp } }, returnFields).sort({ timestamp: 1 }).limit(1).toArray();
         var closestBelow = await db.collection('blocks').find({ timestamp: { $lte: toTimestamp } }, returnFields).sort({ timestamp: -1 }).limit(1).toArray();
         var closestBlock = closestAbove[0] && (!closestBelow[0] || closestAbove[0].timestamp - toTimestamp <= toTimestamp - closestBelow[0].timestamp) ? closestAbove[0] : closestBelow[0];
-        var toExchangeRate = Web3.utils.toBN(closestBlock[poolTokenKey + "ExchangeRate"]);
+        var toExchangeRate = Web3.utils.toBN(closestBlock[poolTokenKey + "ExchangeRate"] ? closestBlock[poolTokenKey + "ExchangeRate"] : 1e18);
     } catch (error) {
         console.error("Failed to get RSPT rates history:", error);
         return res.status(500).send();
@@ -251,11 +264,11 @@ app.get("/pools/:pool/apy", asyncHandler(async (req, res, next) => {
 }));
 
 app.get("/pools/:pool/apys", asyncHandler(async (req, res, next) => {
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
-    var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+    var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
     
-    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, 1593499687) : 1593499687;
+    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, POOL_INCEPTION_TIMESTAMPS.stable) : POOL_INCEPTION_TIMESTAMPS.stable;
     var toTimestamp = req.query && req.query.toTimestamp !== undefined ? Math.min(req.query.toTimestamp, Math.trunc((new Date()).getTime() / 1000)) : Math.trunc((new Date()).getTime() / 1000);
     var intervalSeconds = req.query && req.query.intervalSeconds !== undefined ? req.query.intervalSeconds : 86400;
     
@@ -280,11 +293,11 @@ app.get("/pools/:pool/apys", asyncHandler(async (req, res, next) => {
     return res.status(200).json(apys);
 }));
 
-for (const poolKey of ["stable", "yield", "ethereum"]) {
-    var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+for (const poolKey of POOL_KEYS) {
+    var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
   
     app.get("/pools/" + poolKey + "/" + poolTokenKey + "/rate", asyncHandler(async (req, res, next) => {
-        var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+        var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
         
         var timestamp = req.query && req.query.timestamp !== undefined && req.query.timestamp !== 'latest' ? Math.min(req.query.timestamp, Math.trunc((new Date()).getTime() / 1000)) : Math.trunc((new Date()).getTime() / 1000);
 
@@ -303,9 +316,9 @@ for (const poolKey of ["stable", "yield", "ethereum"]) {
     }));
 
     app.get(["/pools/" + poolKey + "/" + poolTokenKey + "/rates"], asyncHandler(async (req, res, next) => {
-        var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+        var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
 
-        var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, 1593499687) : 1593499687;
+        var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, POOL_INCEPTION_TIMESTAMPS.stable) : POOL_INCEPTION_TIMESTAMPS.stable;
         var toTimestamp = req.query && req.query.toTimestamp !== undefined && req.query.toTimestamp !== 'latest' ? Math.min(req.query.toTimestamp, Math.trunc((new Date()).getTime() / 1000)) : Math.trunc((new Date()).getTime() / 1000);
         var intervalSeconds = req.query && req.query.intervalSeconds !== undefined ? req.query.intervalSeconds : 86400;
         
@@ -332,10 +345,10 @@ for (const poolKey of ["stable", "yield", "ethereum"]) {
 }
 
 app.get("/pools/:pool/balances", asyncHandler(async (req, res, next) => {
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
     
-    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, 1593499687) : 1593499687;
+    var fromTimestamp = req.query && req.query.fromTimestamp !== undefined ? Math.max(req.query.fromTimestamp, POOL_INCEPTION_TIMESTAMPS.stable) : POOL_INCEPTION_TIMESTAMPS.stable;
     var toTimestamp = req.query && req.query.toTimestamp !== undefined && req.query.toTimestamp !== 'latest' ? Math.min(req.query.toTimestamp, Math.trunc((new Date()).getTime() / 1000)) : Math.trunc((new Date()).getTime() / 1000);
     var intervalSeconds = req.query && req.query.intervalSeconds !== undefined ? req.query.intervalSeconds : 86400;
     
@@ -361,9 +374,9 @@ app.get("/pools/:pool/balances", asyncHandler(async (req, res, next) => {
 }));
 
 app.get("/pools/:pool/balances/:account", asyncHandler(async (req, res, next) => {
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
-    var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+    var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
 
     if (!req.params || !req.params.account) return res.status(500).send();
     if (req.params.account === "0x0000000000000000000000000000000000000000") return res.status(200).json([]);
@@ -373,8 +386,7 @@ app.get("/pools/:pool/balances/:account", asyncHandler(async (req, res, next) =>
 
     // Get from block
     var fromBlock = req.query && req.query.fromBlock !== undefined ? parseInt(req.query.fromBlock) : 0;
-    if (poolKey == "stable" && fromBlock < 10365607) fromBlock = 10365607;
-    else if (poolKey != "stable" && fromBlock < 11095700) fromBlock = 11095700;
+    if (fromBlock < POOL_INCEPTION_BLOCKS[poolKey]) fromBlock = POOL_INCEPTION_BLOCKS[poolKey];
     var fromBlockData = null;
 
     if (req.query && req.query.fromTimestamp !== undefined) {
@@ -446,17 +458,20 @@ app.get("/pools/:pool/balances/:account", asyncHandler(async (req, res, next) =>
     var events = [];
 
     if (poolKey == "stable") {
-        events = await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10365607), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { from: req.params.account } });
-        events = events.concat(await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10365607), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { to: req.params.account } }));
+        events = await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { from: req.params.account } });
+        events = events.concat(await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { to: req.params.account } }));
 
         events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10909597), toBlock, filter: { from: req.params.account } }));
         events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10909597), toBlock, filter: { to: req.params.account } }));
     } else if (poolKey == "yield") {
-        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { from: req.params.account } });
-        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { to: req.params.account } }));
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
     } else if (poolKey == "ethereum") {
-        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { from: req.params.account } });
-        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { to: req.params.account } }));
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
+    } else if (poolKey == "dai") {
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
     }
 
     // Sort events by block number
@@ -541,9 +556,9 @@ app.get("/pools/:pool/balances/:account", asyncHandler(async (req, res, next) =>
 
 app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) => {
     // TODO: Account interest history
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
-    var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+    var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
     
     if (!req.params || !req.params.account) return res.status(500).send();
     if (req.params.account === "0x0000000000000000000000000000000000000000") return res.status(200).json("0");
@@ -587,17 +602,20 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
 
     if (poolKey == "stable") {
         // TODO: No need for Math.max?
-        events = await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10365607), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { from: req.params.account } });
-        events = events.concat(await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10365607), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { to: req.params.account } }));
+        events = await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { from: req.params.account } });
+        events = events.concat(await legacyContractsWithLogs["v1.0.0"].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock: toBlock === 'latest' ? 10890985 : Math.min(toBlock, 10890985), filter: { to: req.params.account } }));
 
         events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10909597), toBlock, filter: { from: req.params.account } }));
         events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 10909597), toBlock, filter: { to: req.params.account } }));
     } else if (poolKey == "yield") {
-        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { from: req.params.account } });
-        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { to: req.params.account } }));
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
     } else if (poolKey == "ethereum") {
-        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { from: req.params.account } });
-        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, 11095700), toBlock, filter: { to: req.params.account } }));
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
+    } else if (poolKey == "dai") {
+        events = await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { from: req.params.account } });
+        events = events.concat(await contractsWithLogs[poolKey].RariFundToken.getPastEvents("Transfer", { fromBlock: Math.max(fromBlock + 1, POOL_INCEPTION_BLOCKS[poolKey]), toBlock, filter: { to: req.params.account } }));
     }
 
     // Sort events from lowest to highest block number
@@ -607,9 +625,10 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
     var netDepositsUsd = Web3.utils.toBN(0);
 
     // TODO: Come up with something better than this
-    if (poolKey == "stable" && fromBlock >= 10365607) netDepositsUsd = Web3.utils.toBN(await (fromBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (fromBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.balanceOf(req.params.account).call(fromBlock > 11821049 && fromBlock < 11821088 ? 11821049 : (fromBlock > 10458016 && fromBlock < 10458038 ? 10458016 : fromBlock)));
-    else if (poolKey == "yield" && fromBlock >= 11095700) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11854020 && fromBlock < 11854028 ? 11854020 : fromBlock));
-    else if (poolKey == "ethereum" && fromBlock >= 11095700) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11819249 && fromBlock < 11819256 ? 11819249 : (fromBlock > 12168302 && fromBlock < 12168537 ? 12168302 : fromBlock)));
+    if (poolKey == "stable" && fromBlock >= POOL_INCEPTION_BLOCKS[poolKey]) netDepositsUsd = Web3.utils.toBN(await (fromBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (fromBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.balanceOf(req.params.account).call(fromBlock > 11821049 && fromBlock < 11821088 ? 11821049 : (fromBlock > 10458016 && fromBlock < 10458038 ? 10458016 : fromBlock)));
+    else if (poolKey == "yield" && fromBlock >= POOL_INCEPTION_BLOCKS[poolKey]) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11854020 && fromBlock < 11854028 ? 11854020 : fromBlock));
+    else if (poolKey == "ethereum" && fromBlock >= POOL_INCEPTION_BLOCKS[poolKey]) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11819249 && fromBlock < 11819256 ? 11819249 : (fromBlock > 12168302 && fromBlock < 12168537 ? 12168302 : (fromBlock >= 12395227 ? 12395226 : fromBlock))));
+    else if (poolKey == "dai" && fromBlock >= POOL_INCEPTION_BLOCKS[poolKey]) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock));
 
     for (const event of events) {
         var block = await db.collection('blocks').findOne({ number: event.blockNumber });
@@ -619,7 +638,8 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
             try {
                 if (poolKey == "stable") var fundBalanceBN = Web3.utils.toBN(await (event.blockNumber >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (event.blockNumber >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(event.blockNumber > 11821049 && event.blockNumber < 11821088 ? 11821049 : (event.blockNumber > 10458016 && event.blockNumber < 10458038 ? 10458016 : event.blockNumber)));
                 else if (poolKey == "yield") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11854020 && event.blockNumber < 11854028 ? 11854020 : event.blockNumber));
-                else if (poolKey == "ethereum") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : (event.blockNumber > 12168302 && event.blockNumber < 12168537 ? 12168302 : event.blockNumber)));
+                else if (poolKey == "ethereum") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : (event.blockNumber > 12168302 && event.blockNumber < 12168537 ? 12168302 : (event.blockNumber >= 12395227 ? 12395226 : event.blockNumber))));
+                else if (poolKey == "dai") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + event.blockNumber + ":", error);
                 return res.status(500).send();
@@ -648,7 +668,7 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
 }));
 
 app.get("/pools/:pool/interest", asyncHandler(async (req, res, next) => {
-    if (!req.params || ["stable", "yield", "ethereum"].indexOf(req.params.pool) < 0) return res.status(500).send();
+    if (!req.params || POOL_KEYS.indexOf(req.params.pool) < 0) return res.status(500).send();
     var poolKey = req.params.pool;
 
     // TODO: Interest history
@@ -658,22 +678,14 @@ app.get("/pools/:pool/interest", asyncHandler(async (req, res, next) => {
         if (req.query.endBlock !== undefined) {
             if (req.query.startBlock == req.query.endBlock) return res.status(200).json("0");
             if (req.query.startBlock > req.query.endBlock) return res.status(400).json();
-            if (req.query.endBlock < {
-              "stable": 10365607,
-              "yield": 11095700, // 11095700 is close enough
-              "ethereum": 11095700 // 11095700 is close enough
-            }[poolKey]) return res.status(200).json("0");
+            if (req.query.endBlock < POOL_INCEPTION_BLOCKS[poolKey]) return res.status(200).json("0");
         }
 
-        if (req.query.startBlock > {
-          "stable": 10365607,
-          "yield": 11095700, // 11095700 is close enough
-          "ethereum": 11095700 // 11095700 is close enough
-        }[poolKey]) {
+        if (req.query.startBlock > POOL_INCEPTION_BLOCKS[poolKey]) {
             try {
                 if (poolKey == "stable") var startInterestAccrued = await (req.query.startBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (req.query.startBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getInterestAccrued().call(req.query.startBlock > 11821049 && req.query.startBlock < 11821088 ? 11821049 : (req.query.startBlock > 10458016 && req.query.startBlock < 10458038 ? 10458016 : req.query.startBlock));
                 else if (poolKey == "yield") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11854020 && req.query.startBlock < 11854028 ? 11854020 : req.query.startBlock);
-                else if (poolKey == "ethereum") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11819249 && req.query.startBlock < 11819256 ? 11819249 : (req.query.startBlock > 12168302 && req.query.startBlock < 12168537 ? 12168302 : req.query.startBlock));
+                else if (poolKey == "ethereum") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11819249 && req.query.startBlock < 11819256 ? 11819249 : (req.query.startBlock > 12168302 && req.query.startBlock < 12168537 ? 12168302 : (req.query.startBlock >= 12395227 ? 12395226 : req.query.startBlock)));
             } catch (error) {
                 console.error("Failed to get interest accrued at start block:", error);
                 return res.status(500).send();
@@ -684,7 +696,7 @@ app.get("/pools/:pool/interest", asyncHandler(async (req, res, next) => {
     try {
         if (poolKey == "stable") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? (req.query.endBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (req.query.endBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getInterestAccrued().call(req.query.endBlock > 11821049 && req.query.endBlock < 11821088 ? 11821049 : (req.query.endBlock > 10458016 && req.query.endBlock < 10458038 ? 10458016 : req.query.endBlock)) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
         else if (poolKey == "yield") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11854020 && req.query.endBlock < 11854028 ? 11854020 : req.query.endBlock) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
-        else if (poolKey == "ethereum") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11819249 && req.query.endBlock < 11819256 ? 11819249 : (req.query.endBlock > 12168302 && req.query.endBlock < 12168537 ? 12168302 : req.query.startBlock)) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
+        else if (poolKey == "ethereum") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11819249 && req.query.endBlock < 11819256 ? 11819249 : (req.query.endBlock > 12168302 && req.query.endBlock < 12168537 ? 12168302 : (req.query.endBlock >= 12395227 ? 12395226 : req.query.endBlock))) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
     } catch (error) {
         console.error("Failed to get interest accrued at end block:", error);
         return res.status(500).send();
@@ -730,6 +742,12 @@ const contractAddresses = {
     "RariFundManager": "0xD6e194aF3d9674b62D1b30Ec676030C23961275e",
     "RariFundToken": "0xCda4770d65B4211364Cb870aD6bE19E7Ef1D65f4",
     "RariFundProxy": "0xa3cc9e4B9784c80a05B3Af215C32ff223C3ebE5c"
+  },
+  "dai": {
+    "RariFundController": "0xD7590e93a2e04110Ad50ec70EADE7490F7B8228a",
+    "RariFundManager": "0xB465BAF04C087Ce3ed1C266F96CA43f4847D9635",
+    "RariFundToken": "0x0833cfcb11A5ba89FbAF73a407831c98aD2D7648",
+    "RariFundProxy": "0x3F579F097F2CE8696Ae8C417582CfAFdE9Ec9966"
   },
 };
 
@@ -801,13 +819,13 @@ client.connect(function(err) {
     console.log("Connected successfully to MongoDB server");
     db = client.db(process.env.MONDODB_DB_NAME);
     resetCheckingForBlocks();
-    // checkForMissingBlocks(11363000); // 10365607
+    // checkForMissingBlocks(11363000); // POOL_INCEPTION_BLOCKS["stable"]
 });
 
 function resetCheckingForBlocks() {
     db.collection('blocks').find().sort({ number: -1 }).limit(1).toArray(function(err, result) {
         if (err !== null) return console.error("Failed to get blocks from database:", err);
-        var startBlockNumber = result && result[0] && result[0].number !== null ? result[0].number + 1 : 10365607;
+        var startBlockNumber = result && result[0] && result[0].number !== null ? result[0].number + 1 : POOL_INCEPTION_BLOCKS["stable"];
         startCheckingForBlocks(startBlockNumber);
     });
 }
@@ -858,16 +876,14 @@ async function startCheckingForBlocks(startBlockNumber) {
         var rsptExchangeRateBN = Web3.utils.toBN(fundBalance).mul(Web3.utils.toBN(1e18)).div(Web3.utils.toBN(rsptTotalSupply));
         var block = { number: i, timestamp: block.timestamp, rsptExchangeRate: rsptExchangeRateBN.toString(), rsptTotalSupply, stablePoolBalance: fundBalance };
         
-        for (const poolKey of ["yield", "ethereum"]) {
-            if (i < {
-              "yield": 11095700, // 11095700 is close enough
-              "ethereum": 11095700 // 11095700 is close enough
-            }[poolKey]) continue;
-            var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+        for (const poolKey of ["yield", "ethereum", "dai"]) {
+            if (i < POOL_INCEPTION_BLOCKS[poolKey]) continue;
+            var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
 
             try {
                 if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
-                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : i));
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : (i >= 12395227 ? 12395226 : i)));
+                else var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i);
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);
@@ -901,6 +917,7 @@ async function startCheckingForBlocks(startBlockNumber) {
     }, 60000);
 }
 
+// TODO: Add DAI pool
 async function checkForMissingBlocks(startBlockNumber) {
     try {
         var endBlockNumber = await web3.eth.getBlockNumber();
@@ -944,15 +961,12 @@ async function checkForMissingBlocks(startBlockNumber) {
         var block = { number: i, timestamp: block.timestamp, rsptExchangeRate: rsptExchangeRateBN.toString(), rsptTotalSupply, stablePoolBalance: fundBalance };
         
         for (const poolKey of ["yield", "ethereum"]) {
-            if (i < {
-              "yield": 11095700, // 11095700 is close enough
-              "ethereum": 11095700 // 11095700 is close enough
-            }[poolKey]) continue;
-            var poolTokenKey = { "stable": "rspt", "yield": "rypt", "ethereum": "rept" }[poolKey];
+            if (i < POOL_INCEPTION_BLOCKS[poolKey]) continue;
+            var poolTokenKey = POOL_TOKEN_KEYS[poolKey];
 
             try {
                 if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
-                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : i));
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : (i >= 12395227 ? 12395226 : i)));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);

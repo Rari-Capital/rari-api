@@ -609,7 +609,7 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
     // TODO: Come up with something better than this
     if (poolKey == "stable" && fromBlock >= 10365607) netDepositsUsd = Web3.utils.toBN(await (fromBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (fromBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.balanceOf(req.params.account).call(fromBlock > 11821049 && fromBlock < 11821088 ? 11821049 : (fromBlock > 10458016 && fromBlock < 10458038 ? 10458016 : fromBlock)));
     else if (poolKey == "yield" && fromBlock >= 11095700) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11854020 && fromBlock < 11854028 ? 11854020 : fromBlock));
-    else if (poolKey == "ethereum" && fromBlock >= 11095700) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11819249 && fromBlock < 11819256 ? 11819249 : fromBlock));
+    else if (poolKey == "ethereum" && fromBlock >= 11095700) netDepositsUsd = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.balanceOf(req.params.account).call(fromBlock > 11819249 && fromBlock < 11819256 ? 11819249 : (fromBlock > 12168302 && fromBlock < 12168537 ? 12168302 : fromBlock)));
 
     for (const event of events) {
         var block = await db.collection('blocks').findOne({ number: event.blockNumber });
@@ -619,7 +619,7 @@ app.get("/pools/:pool/interest/:account", asyncHandler(async (req, res, next) =>
             try {
                 if (poolKey == "stable") var fundBalanceBN = Web3.utils.toBN(await (event.blockNumber >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (event.blockNumber >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(event.blockNumber > 11821049 && event.blockNumber < 11821088 ? 11821049 : (event.blockNumber > 10458016 && event.blockNumber < 10458038 ? 10458016 : event.blockNumber)));
                 else if (poolKey == "yield") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11854020 && event.blockNumber < 11854028 ? 11854020 : event.blockNumber));
-                else if (poolKey == "ethereum") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : event.blockNumber));
+                else if (poolKey == "ethereum") var fundBalanceBN = Web3.utils.toBN(await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(event.blockNumber > 11819249 && event.blockNumber < 11819256 ? 11819249 : (event.blockNumber > 12168302 && event.blockNumber < 12168537 ? 12168302 : event.blockNumber)));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + event.blockNumber + ":", error);
                 return res.status(500).send();
@@ -673,7 +673,7 @@ app.get("/pools/:pool/interest", asyncHandler(async (req, res, next) => {
             try {
                 if (poolKey == "stable") var startInterestAccrued = await (req.query.startBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (req.query.startBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getInterestAccrued().call(req.query.startBlock > 11821049 && req.query.startBlock < 11821088 ? 11821049 : (req.query.startBlock > 10458016 && req.query.startBlock < 10458038 ? 10458016 : req.query.startBlock));
                 else if (poolKey == "yield") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11854020 && req.query.startBlock < 11854028 ? 11854020 : req.query.startBlock);
-                else if (poolKey == "ethereum") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11819249 && req.query.startBlock < 11819256 ? 11819249 : req.query.startBlock);
+                else if (poolKey == "ethereum") var startInterestAccrued = await contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.startBlock > 11819249 && req.query.startBlock < 11819256 ? 11819249 : (req.query.startBlock > 12168302 && req.query.startBlock < 12168537 ? 12168302 : req.query.startBlock));
             } catch (error) {
                 console.error("Failed to get interest accrued at start block:", error);
                 return res.status(500).send();
@@ -684,7 +684,7 @@ app.get("/pools/:pool/interest", asyncHandler(async (req, res, next) => {
     try {
         if (poolKey == "stable") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? (req.query.endBlock >= 10909111 ? contractsWithArchive[poolKey].RariFundManager : (req.query.endBlock >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getInterestAccrued().call(req.query.endBlock > 11821049 && req.query.endBlock < 11821088 ? 11821049 : (req.query.endBlock > 10458016 && req.query.endBlock < 10458038 ? 10458016 : req.query.endBlock)) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
         else if (poolKey == "yield") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11854020 && req.query.endBlock < 11854028 ? 11854020 : req.query.endBlock) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
-        else if (poolKey == "ethereum") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11819249 && req.query.endBlock < 11819256 ? 11819249 : req.query.endBlock) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
+        else if (poolKey == "ethereum") var endInterestAccrued = await (req.query && req.query.endBlock !== undefined && req.query.endBlock !== 'latest' ? contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call(req.query.endBlock > 11819249 && req.query.endBlock < 11819256 ? 11819249 : (req.query.endBlock > 12168302 && req.query.endBlock < 12168537 ? 12168302 : req.query.startBlock)) : contractsWithArchive[poolKey].RariFundManager.methods.getInterestAccrued().call());
     } catch (error) {
         console.error("Failed to get interest accrued at end block:", error);
         return res.status(500).send();
@@ -867,7 +867,7 @@ async function startCheckingForBlocks(startBlockNumber) {
 
             try {
                 if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
-                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : i);
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : i));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);
@@ -952,7 +952,7 @@ async function checkForMissingBlocks(startBlockNumber) {
 
             try {
                 if (poolKey == "yield") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11854020 && i < 11854028 ? 11854020 : i);
-                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : i);
+                else if (poolKey == "ethereum") var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i > 11819249 && i < 11819256 ? 11819249 : (i > 12168302 && i < 12168537 ? 12168302 : i));
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);

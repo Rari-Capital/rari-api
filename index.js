@@ -871,7 +871,7 @@ async function startCheckingForBlocks(startBlockNumber) {
         }
 
         try {
-            var fundBalance = await (i >= 10909111 ? contractsWithArchive["stable"].RariFundManager : (i >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(getBestFundBalanceBlockNumber(poolKey, i));
+            var fundBalance = await (i >= 10909111 ? contractsWithArchive["stable"].RariFundManager : (i >= 10458038 ? legacyContractsWithArchive["v1.1.0"].RariFundManager : legacyContractsWithArchive["v1.0.0"].RariFundManager)).methods.getFundBalance().call(getBestFundBalanceBlockNumber("stable", i));
         } catch (error) {
             console.error("Failed to get fund balance at block #" + i + ":", error);
             return setTimeout(resetCheckingForBlocks, 15 * 60000);
@@ -893,7 +893,6 @@ async function startCheckingForBlocks(startBlockNumber) {
 
             try {
                 var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(getBestFundBalanceBlockNumber(poolKey, i));
-                else var fundBalance = await contractsWithArchive[poolKey].RariFundManager.methods.getFundBalance().call(i);
             } catch (error) {
                 console.error("Failed to get fund balance at block #" + i + ":", error);
                 return setTimeout(resetCheckingForBlocks, 15 * 60000);

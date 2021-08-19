@@ -25,16 +25,24 @@ const POOL_INCEPTION_TIMESTAMPS = { // Currently only used for Stable Pool
 const POOL_BALANCE_DOWN_AT_BLOCKS = {
   "stable": [
     [11821050, 11821087],
-    [10458017, 10458037]
+    [10458017, 10458037],
+    [12909767, 12909767],
   ],
   "yield": [
-    [11854021, 11854027]
+    [11854021, 11854027],
+    [12904354, 12904355],
   ],
   "ethereum": [
     [11819250, 11819255],
     [12168303, 12168536],
-    [12395227, Infinity]
-  ]
+    [12395227, 12396284], // TODO: Fix incorrect data from blocks 12396285 to 12904200
+    [12904333, 12904334],
+    [12904645, 12904647],
+  ],
+  "dai": [
+    [12904269, 12904271],
+    [12904287, 12904288]
+  ],
 };
 
 function getBestFundBalanceBlockNumber(poolKey, i) {

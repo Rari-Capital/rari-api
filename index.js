@@ -3,9 +3,9 @@ const express = require("express");
 const asyncHandler = require("express-async-handler");
 const cors = require('cors');
 const Web3 = require("web3");
-const web3 = new Web3(new Web3.providers.HttpProvider(process.env.WEB3_HTTP_PROVIDER_URL));
-const web3WithLogs = new Web3(new Web3.providers.HttpProvider(process.env.WEB3_HTTP_PROVIDER_LOGS_URL));
-const web3WithArchive = new Web3(new Web3.providers.HttpProvider(process.env.WEB3_HTTP_PROVIDER_ARCHIVE_URL));
+const web3 = new Web3(new Web3.providers.HttpProvider("https://eth-mainnet.alchemyapi.io/v2/2Mt-6brbJvTA4w9cpiDtnbTo6qOoySnN"));
+const web3WithLogs = new Web3(new Web3.providers.HttpProvider("https://eth-mainnet.alchemyapi.io/v2/2Mt-6brbJvTA4w9cpiDtnbTo6qOoySnN"));
+const web3WithArchive = new Web3(new Web3.providers.HttpProvider("https://eth-mainnet.alchemyapi.io/v2/2Mt-6brbJvTA4w9cpiDtnbTo6qOoySnN"));
 const axios = require("axios");
 const app = express();
 const Big = require('big.js');
@@ -50,7 +50,7 @@ function getBestFundBalanceBlockNumber(poolKey, i) {
     return i;
 }
 
-app.use(cors({ origin: process.env.ACCESS_CONTROL_ALLOW_ORIGIN }));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 function calculateApyBN(startTimestamp, startRsptExchangeRate, endTimestamp, endRsptExchangeRate) {
@@ -60,7 +60,7 @@ function calculateApyBN(startTimestamp, startRsptExchangeRate, endTimestamp, end
 }
 
 function getRgtDistributed(blockNumber) {
-  var startBlock = parseInt(process.env.DISTRIBUTION_START_BLOCK);
+  var startBlock = 11094200;
   if (blockNumber <= startBlock) return web3.utils.toBN(0);
   if (blockNumber >= startBlock + 390000) return web3.utils.toBN(8750000).mul(web3.utils.toBN(1e18));
   var blocks = blockNumber - startBlock;
@@ -833,14 +833,14 @@ const MongoClient = require('mongodb').MongoClient;
 const assert = require('assert');
 
 // Create a new MongoClient
-const client = new MongoClient(process.env.MONGODB_URL, { useUnifiedTopology: true, useNewUrlParser: true });
+const client = new MongoClient("mongodb://mongo:CuQTB3QoujmOd1sGbBX0@containers-us-west-18.railway.app:5787", { useUnifiedTopology: true, useNewUrlParser: true });
 var db = null;
 
 // Connect to the MongoDB server
 client.connect(function(err) {
     assert.equal(null, err);
     console.log("Connected successfully to MongoDB server");
-    db = client.db(process.env.MONDODB_DB_NAME);
+    db = client.db("test");
     resetCheckingForBlocks();
     // checkForMissingBlocks(11363000); // POOL_INCEPTION_BLOCKS["stable"]
 });

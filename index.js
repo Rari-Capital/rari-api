@@ -108,6 +108,10 @@ app.get("/governance/rgt/price", asyncHandler(async (req, res, next) => {
     return res.status(200).json((await getRgtPrice()).toString());
 }));
 
+app.get("/test", asyncHandler(async (req, res, next) => {
+    return res.status(200).json({hello: "world"});
+}));
+
 var ethUsdPrice = getEthPrice();
 
 async function getEthPrice() {
